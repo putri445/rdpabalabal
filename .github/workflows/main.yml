@@ -1,0 +1,65 @@
+
+name: RDP + Tailscale
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secure-rdp:
+    runs-on: windows-2022
+    timeout-minutes: 360
+
+    steps:
+      - name: Configure RDP
+        shell: powershell
+        env:
+          RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
+        run: |
+          $Password = ConvertTo-SecureString $env:RDP_PASSWORD -AsPlainText -Force
+          $User = $env:USERNAME
+
+          Set-LocalUser -Name $User -Password $Password
+
+          Set-ItemProperty `
+            -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+            -Name 'fDenyTSConnections' -Value 0
+
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+          Set-ItemProperty `
+            -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+            -Name 'UserAuthentication' -Value 1
+
+          Write-Host "RDP CONFIGURED"
+          Write-Host "Username: $User"
+
+      - name: Connect Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+
+      - name: Show RDP Connection
+        shell: powershell
+        run: |
+          $IP = tailscale ip -4
+
+          Write-Host "=============================="
+          Write-Host "RDP READY"
+          Write-Host "Tailscale IP: $IP"
+          Write-Host "Username: $env:USERNAME"
+          Write-Host "Port: 3389"
+          Write-Host "=============================="
+
+          tailscale status
+
+      - name: Keep RDP Alive
+        shell: powershell
+        run: |
+          while ($true) {
+            Start-Sleep -Seconds 60
+            Write-Host "RDP RUNNING: $(Get-Date)"
+          }
+          
